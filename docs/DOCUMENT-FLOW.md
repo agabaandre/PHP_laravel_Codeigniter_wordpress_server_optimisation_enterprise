@@ -4,7 +4,7 @@
 
 | Step | File | Purpose |
 |------|------|---------|
-| 1 | [README.md](../README.md) | Overview, `setup.sh` usage |
+| 1 | [README.md](../README.md) | Overview, frameworks (WP/Laravel/CI), optional Redis |
 | 2 | **`setup.sh`** | One-shot install on the server |
 | 3 | [docs/SCALING.md](SCALING.md) | Tier capacity and manual tuning |
 | 4 | [docs/SETUP.md](SETUP.md) | Manual steps / troubleshooting |
@@ -13,7 +13,7 @@
 
 ```mermaid
 flowchart TD
-  A[clone repo] --> B[sudo ./setup.sh]
+  A[clone repo] --> B["sudo ./setup.sh (--with-redis optional)"]
   B --> C[install packages + PPA]
   C --> D[apply tier to configs/]
   D --> E[deploy to /etc]

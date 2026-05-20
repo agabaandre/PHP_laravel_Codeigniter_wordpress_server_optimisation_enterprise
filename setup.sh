@@ -22,6 +22,7 @@ TIER="64"
 SKIP_CERTBOT=0
 SKIP_UFW=0
 RESET_MYSQL_LOGS=0
+WITH_REDIS=0
 DRY_RUN=0
 
 log()  { echo "[setup] $*"; }
@@ -30,7 +31,7 @@ die()  { echo "[setup] ERROR: $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-WordPress server setup — installs stack and applies optimisations.
+PHP application server setup (WordPress, Laravel, CodeIgniter) — stack + optimisations.
 
 Required for SSL:
   --domain DOMAIN       Primary domain (e.g. example.com)
@@ -41,15 +42,17 @@ Optional:
   --skip-certbot        Do not run Certbot (HTTP only)
   --skip-ufw            Do not configure UFW
   --reset-mysql-logs    Stop MySQL and remove ib_logfile* before start
+  --with-redis          Install Redis server + php8.3-redis (Laravel/cache/queues)
   --dry-run             Print actions only
   --help                Show this help
 
 Examples:
   sudo ./setup.sh --domain example.com --email admin@example.com
+  sudo ./setup.sh --with-redis --domain example.com --email admin@example.com
   sudo ./setup.sh --tier 32 --domain example.com --email admin@example.com
   sudo ./setup.sh --tier 8 --skip-certbot
 
-After WordPress deploys (OPcache production mode):
+After app deploys (OPcache production mode):
   sudo systemctl reload php8.3-fpm
 EOF
 }
@@ -63,6 +66,7 @@ parse_args() {
       --skip-certbot) SKIP_CERTBOT=1; shift ;;
       --skip-ufw)     SKIP_UFW=1; shift ;;
       --reset-mysql-logs) RESET_MYSQL_LOGS=1; shift ;;
+      --with-redis) WITH_REDIS=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --help|-h) usage; exit 0 ;;
       *) die "Unknown option: $1 (use --help)" ;;
@@ -205,7 +209,7 @@ install_packages() {
   run apt-get upgrade -y -qq
   run apt-get install -y -qq \
     software-properties-common apt-transport-https ca-certificates \
-    curl gnupg lsb-release ufw
+    curl gnupg lsb-release ufw git unzip
 
   run add-apt-repository -y ppa:ondrej/php
   run apt-get update -qq
@@ -219,6 +223,14 @@ install_packages() {
     apache2 mysql-server mysql-client fail2ban libapache2-mod-security2
 
   run apt-get install -y -qq certbot python3-certbot-apache
+}
+
+install_optional_extras() {
+  [[ "${WITH_REDIS}" -eq 1 ]] || return 0
+  log "Installing Redis (server + PHP extension)..."
+  run apt-get install -y -qq redis-server php8.3-redis
+  run systemctl enable redis-server
+  run systemctl restart redis-server
 }
 
 configure_firewall() {
@@ -327,7 +339,9 @@ Backups (if any):     ${BACKUP_DIR}
 Services:
   systemctl status apache2 php8.3-fpm mysql
 
-After each WordPress / code deploy:
+Redis (--with-redis): 127.0.0.1:6379
+
+After each app deploy:
   sudo systemctl reload php8.3-fpm
 
 Create WordPress database (manual):
@@ -356,6 +370,7 @@ main() {
   substitute_domain
 
   install_packages
+  install_optional_extras
   configure_firewall
   configure_apache_modules
   deploy_configs
