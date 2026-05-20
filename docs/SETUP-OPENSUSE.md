@@ -1,5 +1,9 @@
 # openSUSE / SLES setup
 
+**Tested stack:** Apache **2.4**, MariaDB **10.x**, PHP **8.3** (`php8-fpm`).
+
+Change PHP: edit `PHP_MAJOR="8"` (and `PHP_VERSION` label) at the top of `setup-opensuse.sh`.
+
 ## Scripts
 
 | Script | Mode |

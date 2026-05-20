@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 #
 # RHEL / CentOS Stream / Rocky / AlmaLinux / Oracle Linux
-# Apache httpd + PHP 8.3 (Remi) + MariaDB + tuning
+#
+# TESTED STACK (edit PHP_VERSION below):
+#   MariaDB 10.x / MySQL 8 compatible  |  Apache httpd 2.4  |  PHP 8.3 (Remi)
+#
 #
 # Usage:
 #   sudo ./setup-rhel.sh --domain example.com --email you@example.com
 #   sudo ./setup-rhel.sh --tier 64 --with-redis --domain example.com --email you@example.com
 #
 set -euo pipefail
+
+# --- Edit PHP version (Remi module suffix: 8.2, 8.3, 8.4) ---
+PHP_VERSION="${PHP_VERSION:-8.3}"
+PHP_REMI_MODULE="remi-${PHP_VERSION}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export WP_OPT_LIB_ONLY=1
@@ -27,7 +34,10 @@ usage_rhel() {
   cat <<EOF
 RHEL-family setup (Rocky, Alma, CentOS Stream, RHEL, Oracle Linux).
 
-Same options as setup.sh. Tested on EL 8 / 9 (PHP 8.3 via Remi).
+Same options as setup.sh.
+
+Tested: Apache httpd 2.4, MariaDB/MySQL 8, PHP ${PHP_VERSION} (Remi).
+Change PHP_VERSION at top of setup-rhel.sh.
 
   sudo ./setup-rhel.sh --domain example.com --email you@example.com
   sudo ./setup-rhel.sh --tier 128 --with-redis --domain example.com --email you@example.com
@@ -55,7 +65,7 @@ require_rhel() {
 }
 
 install_packages() {
-  log "Installing packages (dnf + Remi PHP 8.3)..."
+  log "Installing packages (dnf + Remi PHP ${PHP_VERSION})..."
   local el_major remi_rpm
   el_major="${VERSION_ID%%.*}"
   [[ -z "${el_major}" || "${el_major}" -lt 8 ]] && el_major=9
@@ -68,7 +78,8 @@ install_packages() {
   fi
   run dnf install -y "${remi_rpm}" || warn "Remi repo may already be installed"
   run dnf module reset php -y 2>/dev/null || true
-  run dnf module enable php:remi-8.3 -y 2>/dev/null || run dnf module enable php:remi-8.2 -y 2>/dev/null || true
+  run dnf module enable "php:${PHP_REMI_MODULE}" -y 2>/dev/null || \
+    warn "Could not enable php:${PHP_REMI_MODULE} — check Remi and PHP_VERSION"
 
   run dnf install -y \
     php php-fpm php-cli php-common php-mysqlnd php-xml php-mbstring \
@@ -203,6 +214,7 @@ print_summary() {
 ================================================================================
 RHEL-family setup complete (${TIER_LABEL:-tier ${TIER} GB})
 ================================================================================
+Tested stack: Apache 2.4 (httpd), MariaDB/MySQL 8, PHP ${PHP_VERSION} (Remi)
 Configs: ${CONFIG_DIR}
 Backups: ${BACKUP_DIR}
 

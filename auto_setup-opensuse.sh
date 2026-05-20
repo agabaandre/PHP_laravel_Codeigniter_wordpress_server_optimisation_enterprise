@@ -37,6 +37,7 @@ show_banner() {
 ================================================================================
   PHP Application Server — Interactive Auto Setup (openSUSE)
   Leap · Tumbleweed · SLES
+  Tested: MariaDB 10 · Apache 2.4 · PHP 8.3 (edit PHP_MAJOR in setup-opensuse.sh)
 ================================================================================
 
 EOF

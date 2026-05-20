@@ -1,5 +1,9 @@
 # RHEL-family setup (CentOS, Rocky, Alma, RHEL, Oracle Linux)
 
+**Tested stack:** Apache **2.4** (`httpd`), MariaDB / MySQL **8**, PHP **8.3** (Remi).
+
+Change PHP: edit `PHP_VERSION="8.3"` at the top of `setup-rhel.sh` (uses Remi module `remi-8.3`).
+
 ## Scripts
 
 | Script | Mode |

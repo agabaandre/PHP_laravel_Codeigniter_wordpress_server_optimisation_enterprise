@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
-# WordPress server one-shot setup (Ubuntu 22.04 / 24.04)
-# Apache event MPM + PHP 8.3 FPM + MySQL 8 + tuning from configs/
+# Debian / Ubuntu — WordPress / Laravel / CodeIgniter server setup
+#
+# TESTED STACK (edit PHP_VERSION below to change PHP):
+#   MySQL 8.x  |  Apache 2.4 (event MPM)  |  PHP 8.3 FPM (Ondrej PPA)
 #
 # Usage:
 #   sudo ./setup.sh --domain example.com --email you@example.com
@@ -10,6 +12,13 @@
 #   sudo ./setup.sh --help
 #
 set -euo pipefail
+
+# --- Edit PHP version here (must match Ondrej PPA packages, e.g. 8.2, 8.3, 8.4) ---
+PHP_VERSION="${PHP_VERSION:-8.3}"
+PHP_PKG_PREFIX="php${PHP_VERSION}"          # e.g. php8.3
+PHPFPM_SVC="${PHP_PKG_PREFIX}-fpm"        # systemd unit
+PHP_ETC_FPM="/etc/php/${PHP_VERSION}/fpm" # config root
+PHP_FPM_SOCKET="/run/php/${PHP_PKG_PREFIX}-fpm.sock"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="${SCRIPT_DIR}/configs"
@@ -51,7 +60,9 @@ die()  { echo "[setup] ERROR: $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-PHP application server setup (WordPress, Laravel, CodeIgniter) — stack + optimisations.
+PHP application server setup (WordPress, Laravel, CodeIgniter).
+
+Tested: MySQL 8.x, Apache 2.4, PHP ${PHP_VERSION} (edit PHP_VERSION at top of setup.sh).
 
 Required for SSL:
   --domain DOMAIN       Primary domain (e.g. example.com)
@@ -74,8 +85,20 @@ Examples:
   sudo ./setup.sh --tier 8 --skip-certbot
 
 After app deploys (OPcache production mode):
-  sudo systemctl reload php8.3-fpm
+  sudo systemctl reload ${PHPFPM_SVC}
 EOF
+}
+
+patch_php_version_in_staging() {
+  local sock_esc="${PHP_FPM_SOCKET//\//\\/}"
+  for f in apache-vhost-http.conf apache-vhost-ssl.conf php-fpm-www.conf; do
+    [[ -f "${STAGING_DIR}/${f}" ]] || continue
+    sed -i \
+      -e "s|php8\\.3-fpm\\.sock|${PHP_FPM_SOCKET}|g" \
+      -e "s|/run/php/php8\\.3-fpm\\.sock|${PHP_FPM_SOCKET}|g" \
+      -e "s|php8\\.3-fpm|${PHPFPM_SVC}|g" \
+      "${STAGING_DIR}/${f}"
+  done
 }
 
 parse_args() {
@@ -348,6 +371,7 @@ run_install_pipeline() {
 }
 
 substitute_domain() {
+  patch_php_version_in_staging
   [[ -n "${DOMAIN}" ]] || return 0
   sed -i "s/YOUR_DOMAIN/${DOMAIN}/g" \
     "${STAGING_DIR}/apache-vhost-http.conf" \
@@ -374,10 +398,13 @@ install_packages() {
   run add-apt-repository -y ppa:ondrej/php
   run apt-get update -qq
 
+  log "Installing PHP ${PHP_VERSION} packages (${PHP_PKG_PREFIX}-*)..."
   run apt-get install -y -qq \
-    php8.3 php8.3-fpm php8.3-cli php8.3-common \
-    php8.3-mysql php8.3-xml php8.3-mbstring php8.3-curl php8.3-zip \
-    php8.3-gd php8.3-intl php8.3-bcmath php8.3-imagick php8.3-opcache
+    "${PHP_PKG_PREFIX}" "${PHP_PKG_PREFIX}-fpm" "${PHP_PKG_PREFIX}-cli" "${PHP_PKG_PREFIX}-common" \
+    "${PHP_PKG_PREFIX}-mysql" "${PHP_PKG_PREFIX}-xml" "${PHP_PKG_PREFIX}-mbstring" \
+    "${PHP_PKG_PREFIX}-curl" "${PHP_PKG_PREFIX}-zip" \
+    "${PHP_PKG_PREFIX}-gd" "${PHP_PKG_PREFIX}-intl" "${PHP_PKG_PREFIX}-bcmath" \
+    "${PHP_PKG_PREFIX}-imagick" "${PHP_PKG_PREFIX}-opcache"
 
   run apt-get install -y -qq \
     apache2 mysql-server mysql-client fail2ban libapache2-mod-security2
@@ -388,7 +415,7 @@ install_packages() {
 install_optional_extras() {
   [[ "${WITH_REDIS}" -eq 1 ]] || return 0
   log "Installing Redis (server + PHP extension)..."
-  run apt-get install -y -qq redis-server php8.3-redis
+  run apt-get install -y -qq redis-server "${PHP_PKG_PREFIX}-redis"
   run systemctl enable redis-server
   run systemctl restart redis-server
 }
@@ -404,12 +431,12 @@ configure_firewall() {
 configure_apache_modules() {
   log "Enabling Apache modules (event MPM + PHP-FPM)..."
   run a2dismod mpm_prefork 2>/dev/null || true
-  for mod in php8.1 php8.2 php8.3; do
+  for mod in php8.1 php8.2 php8.3 php8.4; do
     run a2dismod "${mod}" 2>/dev/null || true
   done
   run a2enmod mpm_event ssl rewrite headers proxy proxy_fcgi setenvif \
     http2 expires deflate remoteip security2
-  run a2enconf php8.3-fpm
+  run a2enconf "${PHP_PKG_PREFIX}-fpm"
 }
 
 deploy_configs() {
@@ -425,14 +452,14 @@ deploy_configs() {
   backup_file /etc/mysql/mysql.conf.d/mysqld.cnf
   run cp "${STAGING_DIR}/mysqld.cnf" /etc/mysql/mysql.conf.d/mysqld.cnf
 
-  backup_file /etc/php/8.3/fpm/php.ini
-  run cp "${STAGING_DIR}/php.ini" /etc/php/8.3/fpm/php.ini
+  backup_file "${PHP_ETC_FPM}/php.ini"
+  run cp "${STAGING_DIR}/php.ini" "${PHP_ETC_FPM}/php.ini"
 
-  backup_file /etc/php/8.3/fpm/conf.d/10-opcache-custom.ini
-  run cp "${STAGING_DIR}/opcache.ini" /etc/php/8.3/fpm/conf.d/10-opcache-custom.ini
+  backup_file "${PHP_ETC_FPM}/conf.d/10-opcache-custom.ini"
+  run cp "${STAGING_DIR}/opcache.ini" "${PHP_ETC_FPM}/conf.d/10-opcache-custom.ini"
 
-  backup_file /etc/php/8.3/fpm/pool.d/www.conf
-  run cp "${STAGING_DIR}/php-fpm-www.conf" /etc/php/8.3/fpm/pool.d/www.conf
+  backup_file "${PHP_ETC_FPM}/pool.d/www.conf"
+  run cp "${STAGING_DIR}/php-fpm-www.conf" "${PHP_ETC_FPM}/pool.d/www.conf"
 
   run mkdir -p /var/log/php /var/log/php-fpm
   run chown www-data:www-data /var/log/php
@@ -454,9 +481,9 @@ validate_and_restart() {
   reset_mysql_logs_if_needed
 
   log "Restarting services..."
-  run systemctl enable mysql php8.3-fpm apache2 certbot.timer
+  run systemctl enable mysql "${PHPFPM_SVC}" apache2 certbot.timer
   run systemctl restart mysql
-  run systemctl restart php8.3-fpm
+  run systemctl restart "${PHPFPM_SVC}"
   run systemctl restart apache2
   run systemctl start certbot.timer 2>/dev/null || true
 }
@@ -493,16 +520,18 @@ print_summary() {
 ================================================================================
 Setup complete (${TIER_LABEL:-tier ${TIER} GB})
 ================================================================================
+Tested stack: MySQL 8.x, Apache 2.4, PHP ${PHP_VERSION}
 Configs applied from: ${CONFIG_DIR}
 Backups (if any):     ${BACKUP_DIR}
 
 Services:
-  systemctl status apache2 php8.3-fpm mysql
+  systemctl status apache2 ${PHPFPM_SVC} mysql
 
+PHP-FPM socket: ${PHP_FPM_SOCKET}
 Redis (--with-redis): 127.0.0.1:6379
 
 After each app deploy:
-  sudo systemctl reload php8.3-fpm
+  sudo systemctl reload ${PHPFPM_SVC}
 
 Create WordPress database (manual):
   sudo mysql -e "CREATE DATABASE wordpress CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"

@@ -1,4 +1,8 @@
-# Server setup guide
+# Server setup guide (Debian / Ubuntu)
+
+**Tested stack:** MySQL **8.x**, Apache **2.4**, PHP **8.3** FPM (Ondřej PPA).
+
+To use another PHP version, edit `PHP_VERSION` at the top of `setup.sh` (e.g. `8.2` or `8.4`), then run the script again.
 
 ## Automated (recommended)
 

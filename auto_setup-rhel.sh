@@ -39,6 +39,7 @@ show_banner() {
 ================================================================================
   PHP Application Server — Interactive Auto Setup (RHEL family)
   Rocky · Alma · CentOS Stream · RHEL · Oracle Linux
+  Tested: MySQL/MariaDB 8 · Apache 2.4 · PHP 8.3 (edit PHP_VERSION in setup-rhel.sh)
 ================================================================================
 
 EOF

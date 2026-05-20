@@ -42,7 +42,8 @@ show_banner() {
   cat <<'EOF'
 
 ================================================================================
-  PHP Application Server — Interactive Auto Setup
+  PHP Application Server — Interactive Auto Setup (Debian/Ubuntu)
+  Tested: MySQL 8 · Apache 2.4 · PHP 8.3 (edit PHP_VERSION in setup.sh)
   WordPress · Laravel · CodeIgniter
 ================================================================================
 
@@ -116,7 +117,7 @@ collect_ssl_and_options() {
   fi
 
   echo ""
-  if prompt_yn "Install Redis (php8.3-redis)? Recommended for Laravel/cache" "n"; then
+  if prompt_yn "Install Redis (${PHP_PKG_PREFIX:-php8.3}-redis)? Recommended for Laravel/cache" "n"; then
     WITH_REDIS=1
   else
     WITH_REDIS=0

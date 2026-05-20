@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 #
 # openSUSE Leap / Tumbleweed / SLES
-# Apache2 + PHP 8 FPM + MariaDB + tuning
+#
+# TESTED STACK (edit PHP_MAJOR below — openSUSE package prefix php8, php7, etc.):
+#   MariaDB 10.x  |  Apache 2.4  |  PHP 8.3 FPM (distribution packages)
+#
 #
 # Usage:
 #   sudo ./setup-opensuse.sh --domain example.com --email you@example.com
 #
 set -euo pipefail
+
+# --- Edit PHP major for zypper packages (e.g. 8 → php8-fpm, php8-mysql) ---
+PHP_MAJOR="${PHP_MAJOR:-8}"
+PHP_VERSION="${PHP_VERSION:-8.3}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export WP_OPT_LIB_ONLY=1
@@ -16,9 +23,10 @@ source "${SCRIPT_DIR}/setup.sh"
 CONFIG_DIR="${SCRIPT_DIR}/configs/opensuse"
 WEB_USER="wwwrun"
 HTTPD_SVC="apache2"
-PHPFPM_SVC="php8-fpm"
+PHPFPM_SVC="php${PHP_MAJOR}-fpm"
 MYSQL_SVC="mariadb"
-PHP_ETC="/etc/php8"
+PHP_ETC="/etc/php${PHP_MAJOR}"
+PHP_PKG_PREFIX="php${PHP_MAJOR}"
 
 log()  { echo "[opensuse] $*"; }
 warn() { echo "[opensuse] WARNING: $*" >&2; }
@@ -27,7 +35,8 @@ usage_opensuse() {
   cat <<EOF
 openSUSE / SLES setup.
 
-Same options as setup.sh. Uses php8-fpm from distribution repos.
+Tested: Apache 2.4, MariaDB 10.x, PHP ${PHP_VERSION} (php${PHP_MAJOR}-* packages).
+Edit PHP_MAJOR / PHP_VERSION at top of setup-opensuse.sh.
 
   sudo ./setup-opensuse.sh --domain example.com --email you@example.com
   sudo ./setup-opensuse.sh --help
@@ -56,19 +65,22 @@ require_opensuse() {
 install_packages() {
   log "Installing packages (zypper)..."
   run zypper refresh -y
+  log "Installing PHP ${PHP_VERSION} (${PHP_PKG_PREFIX}-* packages)..."
   run zypper install -y \
     apache2 apache2-mod_proxy apache2-mod_proxy_fcgi apache2-mod_rewrite \
     apache2-mod_headers apache2-mod_ssl apache2-mod_http2 apache2-mod_deflate \
     apache2-mod_expires apache2-mod_remoteip \
-    php8-fpm php8 php8-mysql php8-xml php8-mbstring php8-curl php8-zip \
-    php8-gd php8-intl php8-bcmath php8-opcache \
+    "${PHPFPM_SVC}" "${PHP_PKG_PREFIX}" "${PHP_PKG_PREFIX}-mysql" "${PHP_PKG_PREFIX}-xml" \
+    "${PHP_PKG_PREFIX}-mbstring" "${PHP_PKG_PREFIX}-curl" "${PHP_PKG_PREFIX}-zip" \
+    "${PHP_PKG_PREFIX}-gd" "${PHP_PKG_PREFIX}-intl" "${PHP_PKG_PREFIX}-bcmath" \
+    "${PHP_PKG_PREFIX}-opcache" \
     mariadb mariadb-client \
     fail2ban certbot python3-certbot-apache \
     git unzip firewalld
 
   # imagick/redis if available
-  run zypper install -y php8-pear php8-devel 2>/dev/null || true
-  run zypper install -y php8-redis redis 2>/dev/null || true
+  run zypper install -y "${PHP_PKG_PREFIX}-pear" "${PHP_PKG_PREFIX}-devel" 2>/dev/null || true
+  run zypper install -y "${PHP_PKG_PREFIX}-redis" redis 2>/dev/null || true
 
   run systemctl enable "${HTTPD_SVC}" "${PHPFPM_SVC}" "${MYSQL_SVC}" firewalld 2>/dev/null || true
 }
@@ -76,7 +88,7 @@ install_packages() {
 install_optional_extras() {
   [[ "${WITH_REDIS}" -eq 1 ]] || return 0
   log "Installing Redis..."
-  run zypper install -y redis php8-redis
+  run zypper install -y redis "${PHP_PKG_PREFIX}-redis"
   run systemctl enable redis
   run systemctl restart redis
 }
@@ -96,7 +108,7 @@ configure_apache_modules() {
   log "Enabling apache2 modules..."
   run a2enmod proxy proxy_fcgi rewrite headers ssl http2 deflate expires remoteip 2>/dev/null || true
   run a2enmod mpm_event 2>/dev/null || true
-  run a2enconf php8-fpm 2>/dev/null || true
+  run a2enconf "${PHPFPM_SVC}" 2>/dev/null || true
 }
 
 deploy_configs() {
@@ -139,7 +151,7 @@ reset_mysql_logs_if_needed() {
 
 validate_and_restart() {
   log "Validating configuration..."
-  run php8-fpm -t 2>/dev/null || warn "php8-fpm -t skipped"
+  run "${PHPFPM_SVC}" -t 2>/dev/null || warn "${PHPFPM_SVC} -t skipped"
   run mysqld --validate-config 2>/dev/null || run mariadbd --validate-config 2>/dev/null || true
   run apache2ctl configtest 2>/dev/null || run apachectl configtest
 
@@ -182,13 +194,14 @@ print_summary() {
 ================================================================================
 openSUSE setup complete (${TIER_LABEL:-tier ${TIER} GB})
 ================================================================================
+Tested stack: Apache 2.4, MariaDB 10.x, PHP ${PHP_VERSION} (${PHPFPM_SVC})
 Configs: ${CONFIG_DIR}
 
 Services:
-  systemctl status apache2 php8-fpm mariadb
+  systemctl status apache2 ${PHPFPM_SVC} mariadb
 
 Reload PHP after deploys:
-  sudo systemctl reload php8-fpm
+  sudo systemctl reload ${PHPFPM_SVC}
 
 Docs: docs/SETUP-OPENSUSE.md
 ================================================================================
