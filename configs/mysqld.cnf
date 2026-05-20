@@ -1,4 +1,4 @@
-# MySQL 8 — tuned by setup.sh (tier: XL default 64GB / 8 CPU)
+# MySQL 8 — tuned by setup.sh (default template: --tier 64 / XL)
 
 [mysqld]
 

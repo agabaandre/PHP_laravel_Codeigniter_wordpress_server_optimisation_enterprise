@@ -41,8 +41,10 @@ sudo ./setup.sh --with-redis --domain example.com --email admin@example.com
 Other tiers:
 
 ```bash
-sudo ./setup.sh --tier 32 --with-redis --domain example.com --email admin@example.com
-sudo ./setup.sh --tier 8 --skip-certbot
+sudo ./setup.sh --tier 128 --with-redis --domain example.com --email admin@example.com
+sudo ./setup.sh --tier 64  --domain example.com --email admin@example.com
+sudo ./setup.sh --tier 32  --with-redis --domain example.com --email admin@example.com
+sudo ./setup.sh --tier 8   --skip-certbot
 ```
 
 After every deploy (OPcache production mode):
@@ -168,7 +170,7 @@ sudo ./setup.sh --help
 |------|-------------|
 | `--domain` | Primary domain (required for SSL) |
 | `--email` | Let's Encrypt email |
-| `--tier` | `64` (default), `32`, `16`, or `8` |
+| `--tier` | `128`, `64` (default), `32`, `16`, or `8` (aliases: `xxl`, `xl`, `l`, `m`, `s`) |
 | `--with-redis` | Redis server + `php8.3-redis` |
 | `--skip-certbot` | Skip SSL (HTTP only) |
 | `--skip-ufw` | Skip firewall |
@@ -198,6 +200,7 @@ Reference load: **WordPress**, typical plugins, no full-page cache. Laravel with
 
 | Tier | `--tier` | RAM | CPUs | Sustained concurrent | Brief spike |
 |------|----------|-----|------|---------------------|-------------|
+| XXL | `128` | 128 GB | 16 | **280–350** | ~450 |
 | XL | `64` | 64 GB | 8 | **150–200** | ~250 |
 | L | `32` | 32 GB | 4 | **80–100** | ~130 |
 | M | `16` | 16 GB | 4 | **35–50** | ~65 |

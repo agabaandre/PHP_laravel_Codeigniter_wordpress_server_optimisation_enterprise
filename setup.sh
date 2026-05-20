@@ -38,7 +38,7 @@ Required for SSL:
   --email EMAIL         Email for Let's Encrypt
 
 Optional:
-  --tier TIER           64 | 32 | 16 | 8  (GB RAM class, default: 64)
+  --tier TIER           128 | 64 | 32 | 16 | 8  (GB RAM class, default: 64)
   --skip-certbot        Do not run Certbot (HTTP only)
   --skip-ufw            Do not configure UFW
   --reset-mysql-logs    Stop MySQL and remove ib_logfile* before start
@@ -49,6 +49,7 @@ Optional:
 Examples:
   sudo ./setup.sh --domain example.com --email admin@example.com
   sudo ./setup.sh --with-redis --domain example.com --email admin@example.com
+  sudo ./setup.sh --tier 128 --domain example.com --email admin@example.com
   sudo ./setup.sh --tier 32 --domain example.com --email admin@example.com
   sudo ./setup.sh --tier 8 --skip-certbot
 
@@ -74,11 +75,12 @@ parse_args() {
   done
 
   case "${TIER}" in
-    64|xl|XL) TIER="64" ;;
-    32|l|L)  TIER="32" ;;
-    16|m|M)  TIER="16" ;;
-    8|s|S)   TIER="8" ;;
-    *) die "Invalid --tier: ${TIER}. Use 64, 32, 16, or 8." ;;
+    128|xxl|XXL) TIER="128" ;;
+    64|xl|XL)  TIER="64" ;;
+    32|l|L)    TIER="32" ;;
+    16|m|M)    TIER="16" ;;
+    8|s|S)     TIER="8" ;;
+    *) die "Invalid --tier: ${TIER}. Use 128, 64, 32, 16, or 8." ;;
   esac
 
   if [[ "${SKIP_CERTBOT}" -eq 0 ]]; then
@@ -125,34 +127,40 @@ init_staging() {
 apply_tier() {
   log "Applying tier: ${TIER} GB RAM class"
 
-  local pool max_conn buffer_pool pool_inst tmp heap \
+  local max_conn buffer_pool pool_inst tmp heap \
         opc_mem opc_strings max_children start_servers min_spare max_spare \
-        max_workers memory_limit opc_validate
+        max_workers server_limit memory_limit opc_validate
 
   case "${TIER}" in
+    128)
+      max_conn=400; buffer_pool="32G"; pool_inst=16; tmp="768M"; heap="768M"
+      opc_mem=2048; opc_strings=192; max_children=96
+      start_servers=12; min_spare=12; max_spare=24; max_workers=700
+      server_limit=28; memory_limit="256M"; opc_validate=0
+      ;;
     64)
       max_conn=300; buffer_pool="16G"; pool_inst=8; tmp="512M"; heap="512M"
       opc_mem=1024; opc_strings=128; max_children=56
       start_servers=8; min_spare=8; max_spare=16; max_workers=400
-      memory_limit="256M"; opc_validate=0
+      server_limit=16; memory_limit="256M"; opc_validate=0
       ;;
     32)
       max_conn=200; buffer_pool="8G"; pool_inst=4; tmp="256M"; heap="256M"
       opc_mem=512; opc_strings=64; max_children=28
       start_servers=4; min_spare=4; max_spare=8; max_workers=200
-      memory_limit="256M"; opc_validate=0
+      server_limit=16; memory_limit="256M"; opc_validate=0
       ;;
     16)
       max_conn=150; buffer_pool="4G"; pool_inst=4; tmp="128M"; heap="128M"
       opc_mem=256; opc_strings=32; max_children=14
       start_servers=2; min_spare=2; max_spare=4; max_workers=150
-      memory_limit="256M"; opc_validate=0
+      server_limit=16; memory_limit="256M"; opc_validate=0
       ;;
     8)
       max_conn=100; buffer_pool="2G"; pool_inst=2; tmp="64M"; heap="64M"
       opc_mem=128; opc_strings=16; max_children=8
       start_servers=2; min_spare=2; max_spare=3; max_workers=100
-      memory_limit="192M"; opc_validate=1
+      server_limit=16; memory_limit="192M"; opc_validate=1
       ;;
   esac
 
@@ -183,6 +191,7 @@ apply_tier() {
     "${STAGING_DIR}/php-fpm-www.conf"
 
   sed -i \
+    -e "s/^    ServerLimit.*/    ServerLimit              ${server_limit}/" \
     -e "s/^    MaxRequestWorkers.*/    MaxRequestWorkers        ${max_workers}/" \
     "${STAGING_DIR}/apache-mpm.conf"
 }

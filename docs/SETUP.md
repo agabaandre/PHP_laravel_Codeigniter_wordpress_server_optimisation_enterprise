@@ -11,8 +11,10 @@ sudo ./setup.sh --domain YOUR_DOMAIN --email you@example.com
 Tier examples:
 
 ```bash
-sudo ./setup.sh --tier 32 --domain YOUR_DOMAIN --email you@example.com
-sudo ./setup.sh --tier 8 --skip-certbot
+sudo ./setup.sh --tier 128 --domain YOUR_DOMAIN --email you@example.com
+sudo ./setup.sh --tier 64  --domain YOUR_DOMAIN --email you@example.com
+sudo ./setup.sh --tier 32  --domain YOUR_DOMAIN --email you@example.com
+sudo ./setup.sh --tier 8   --skip-certbot
 ```
 
 The script installs packages, deploys `configs/`, restarts services, and runs Certbot unless `--skip-certbot` is set.

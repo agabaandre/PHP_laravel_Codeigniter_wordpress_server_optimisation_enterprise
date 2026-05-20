@@ -1,19 +1,22 @@
 # Scaling guide
 
-Baseline configs in `configs/` target **64 GB RAM / 8 CPUs**. For smaller servers, use `setup.sh --tier` or edit the same four areas manually.
+Baseline configs in `configs/` match **`--tier 64`** (64 GB RAM / 8 CPUs). Use `setup.sh --tier` for any size, or edit the four knob files manually.
 
 ## Capacity (WordPress, typical plugins, no full-page cache)
 
-| Tier | RAM | CPUs | Sustained concurrent* | Brief spike |
-|------|-----|------|----------------------|-------------|
-| **XL** | 64 GB | 8 | 150–200 | ~250 |
-| **L** | 32 GB | 4 | 80–100 | ~130 |
-| **M** | 16 GB | 4 | 35–50 | ~65 |
-| **S** | 8 GB | 4 | 15–25 | ~35 |
+| Tier | `--tier` | RAM | CPUs (typical) | Sustained concurrent* | Brief spike |
+|------|----------|-----|----------------|----------------------|-------------|
+| **XXL** | `128` | 128 GB | 16 | 280–350 | ~450 |
+| **XL** | `64` | 64 GB | 8 | 150–200 | ~250 |
+| **L** | `32` | 32 GB | 4 | 80–100 | ~130 |
+| **M** | `16` | 16 GB | 4 | 35–50 | ~65 |
+| **S** | `8` | 8 GB | 4 | 15–25 | ~35 |
 
-\*Active PHP requests at once, not daily visitors. With object/page cache, often **2–3×** higher.
+\*Active PHP requests at once, not daily visitors. With object/page cache (Redis, etc.), often **2–3×** higher.
 
 **Rule of thumb:** sustained users ≈ `pm.max_children` × 2–3 when `memory_limit` is 256M.
+
+**Aliases:** `--tier xxl` = 128, `--tier xl` = 64, `--tier l` = 32, `--tier m` = 16, `--tier s` = 8.
 
 ---
 
@@ -24,13 +27,55 @@ Baseline configs in `configs/` target **64 GB RAM / 8 CPUs**. For smaller server
 | MySQL buffer pool & connections | `configs/mysqld.cnf` |
 | PHP concurrency | `configs/php-fpm-www.conf` |
 | OPcache RAM | `configs/opcache.ini` |
-| Apache workers (optional) | `configs/apache-mpm.conf` |
+| Apache workers | `configs/apache-mpm.conf` |
 
-**Automated:** `sudo ./setup.sh --tier 32 --domain example.com --email you@example.com`
+**Automated examples:**
+
+```bash
+sudo ./setup.sh --tier 128 --domain example.com --email you@example.com
+sudo ./setup.sh --tier 64  --domain example.com --email you@example.com
+sudo ./setup.sh --tier 32  --domain example.com --email you@example.com
+```
 
 ---
 
-## 32 GB RAM / 4 CPUs
+## 128 GB RAM / 16 CPUs (XXL)
+
+| Setting | Value |
+|---------|--------|
+| `innodb_buffer_pool_size` | `32G` |
+| `innodb_buffer_pool_instances` | `16` |
+| `max_connections` | `400` |
+| `tmp_table_size` / `max_heap_table_size` | `768M` |
+| `opcache.memory_consumption` | `2048` |
+| `opcache.interned_strings_buffer` | `192` |
+| `pm.max_children` | `96` |
+| `pm.start_servers` / `pm.min_spare_servers` | `12` / `12` |
+| `pm.max_spare_servers` | `24` |
+| `ServerLimit` | `28` |
+| `MaxRequestWorkers` | `700` |
+
+---
+
+## 64 GB RAM / 8 CPUs (XL)
+
+| Setting | Value |
+|---------|--------|
+| `innodb_buffer_pool_size` | `16G` |
+| `innodb_buffer_pool_instances` | `8` |
+| `max_connections` | `300` |
+| `tmp_table_size` / `max_heap_table_size` | `512M` |
+| `opcache.memory_consumption` | `1024` |
+| `opcache.interned_strings_buffer` | `128` |
+| `pm.max_children` | `56` |
+| `pm.start_servers` / `pm.min_spare_servers` | `8` / `8` |
+| `pm.max_spare_servers` | `16` |
+| `ServerLimit` | `16` |
+| `MaxRequestWorkers` | `400` |
+
+---
+
+## 32 GB RAM / 4 CPUs (L)
 
 | Setting | Value |
 |---------|--------|
@@ -47,7 +92,7 @@ Baseline configs in `configs/` target **64 GB RAM / 8 CPUs**. For smaller server
 
 ---
 
-## 16 GB RAM / 4 CPUs
+## 16 GB RAM / 4 CPUs (M)
 
 | Setting | Value |
 |---------|--------|
@@ -64,7 +109,7 @@ Baseline configs in `configs/` target **64 GB RAM / 8 CPUs**. For smaller server
 
 ---
 
-## 8 GB RAM / 4 CPUs
+## 8 GB RAM / 4 CPUs (S)
 
 | Setting | Value |
 |---------|--------|
@@ -94,15 +139,3 @@ sudo systemctl start mysql
 ```
 
 Only required when `innodb_log_file_size` (or related InnoDB log settings) change on an **existing** data directory.
-
----
-
-## 64 GB baseline (reference)
-
-| Component | Value |
-|-----------|--------|
-| `innodb_buffer_pool_size` | 16G |
-| `memory_limit` | 256M |
-| `pm.max_children` | 56 |
-| `opcache.memory_consumption` | 1024 |
-| `MaxRequestWorkers` | 400 |
