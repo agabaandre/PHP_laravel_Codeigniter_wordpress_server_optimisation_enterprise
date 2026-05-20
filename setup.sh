@@ -19,6 +19,26 @@ BACKUP_DIR=""
 DOMAIN=""
 EMAIL=""
 TIER="64"
+TIER_LABEL=""
+USE_CALCULATED_TUNING=0
+DETECTED_RAM_GB=0
+DETECTED_CPU_COUNT=0
+# Tuning variables (set by apply_tier or calculate_tuning_from_hardware)
+TUNE_MAX_CONN=""
+TUNE_BUFFER_POOL=""
+TUNE_POOL_INST=""
+TUNE_TMP=""
+TUNE_HEAP=""
+TUNE_OPC_MEM=""
+TUNE_OPC_STRINGS=""
+TUNE_MAX_CHILDREN=""
+TUNE_START_SERVERS=""
+TUNE_MIN_SPARE=""
+TUNE_MAX_SPARE=""
+TUNE_MAX_WORKERS=""
+TUNE_SERVER_LIMIT=""
+TUNE_MEMORY_LIMIT=""
+TUNE_OPC_VALIDATE=""
 SKIP_CERTBOT=0
 SKIP_UFW=0
 RESET_MYSQL_LOGS=0
@@ -124,76 +144,207 @@ init_staging() {
   log "Staging configs in ${STAGING_DIR}"
 }
 
-apply_tier() {
-  log "Applying tier: ${TIER} GB RAM class"
+clamp() {
+  local v=$1 min=$2 max=$3
+  (( v < min )) && v=$min
+  (( v > max )) && v=$max
+  echo "$v"
+}
 
-  local max_conn buffer_pool pool_inst tmp heap \
-        opc_mem opc_strings max_children start_servers min_spare max_spare \
-        max_workers server_limit memory_limit opc_validate
+detect_hardware() {
+  local ram_kb
+  ram_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo)"
+  DETECTED_RAM_GB=$(( ram_kb / 1024 / 1024 ))
+  (( DETECTED_RAM_GB < 1 )) && DETECTED_RAM_GB=1
+  DETECTED_CPU_COUNT="$(nproc 2>/dev/null || echo 1)"
+  DETECTED_CPU_COUNT="$(clamp "${DETECTED_CPU_COUNT}" 1 128)"
+}
 
+nearest_fixed_tier() {
+  local ram=$1
+  if (( ram >= 96 )); then echo 128
+  elif (( ram >= 48 )); then echo 64
+  elif (( ram >= 24 )); then echo 32
+  elif (( ram >= 12 )); then echo 16
+  else echo 8
+  fi
+}
+
+set_tuning_vars_from_tier() {
+  local tier=$1
+  TIER="${tier}"
   case "${TIER}" in
     128)
-      max_conn=400; buffer_pool="32G"; pool_inst=16; tmp="768M"; heap="768M"
-      opc_mem=2048; opc_strings=192; max_children=96
-      start_servers=12; min_spare=12; max_spare=24; max_workers=700
-      server_limit=28; memory_limit="256M"; opc_validate=0
+      TUNE_MAX_CONN=400; TUNE_BUFFER_POOL="32G"; TUNE_POOL_INST=16
+      TUNE_TMP="768M"; TUNE_HEAP="768M"
+      TUNE_OPC_MEM=2048; TUNE_OPC_STRINGS=192; TUNE_MAX_CHILDREN=96
+      TUNE_START_SERVERS=12; TUNE_MIN_SPARE=12; TUNE_MAX_SPARE=24
+      TUNE_MAX_WORKERS=700; TUNE_SERVER_LIMIT=28
+      TUNE_MEMORY_LIMIT="256M"; TUNE_OPC_VALIDATE=0
       ;;
     64)
-      max_conn=300; buffer_pool="16G"; pool_inst=8; tmp="512M"; heap="512M"
-      opc_mem=1024; opc_strings=128; max_children=56
-      start_servers=8; min_spare=8; max_spare=16; max_workers=400
-      server_limit=16; memory_limit="256M"; opc_validate=0
+      TUNE_MAX_CONN=300; TUNE_BUFFER_POOL="16G"; TUNE_POOL_INST=8
+      TUNE_TMP="512M"; TUNE_HEAP="512M"
+      TUNE_OPC_MEM=1024; TUNE_OPC_STRINGS=128; TUNE_MAX_CHILDREN=56
+      TUNE_START_SERVERS=8; TUNE_MIN_SPARE=8; TUNE_MAX_SPARE=16
+      TUNE_MAX_WORKERS=400; TUNE_SERVER_LIMIT=16
+      TUNE_MEMORY_LIMIT="256M"; TUNE_OPC_VALIDATE=0
       ;;
     32)
-      max_conn=200; buffer_pool="8G"; pool_inst=4; tmp="256M"; heap="256M"
-      opc_mem=512; opc_strings=64; max_children=28
-      start_servers=4; min_spare=4; max_spare=8; max_workers=200
-      server_limit=16; memory_limit="256M"; opc_validate=0
+      TUNE_MAX_CONN=200; TUNE_BUFFER_POOL="8G"; TUNE_POOL_INST=4
+      TUNE_TMP="256M"; TUNE_HEAP="256M"
+      TUNE_OPC_MEM=512; TUNE_OPC_STRINGS=64; TUNE_MAX_CHILDREN=28
+      TUNE_START_SERVERS=4; TUNE_MIN_SPARE=4; TUNE_MAX_SPARE=8
+      TUNE_MAX_WORKERS=200; TUNE_SERVER_LIMIT=16
+      TUNE_MEMORY_LIMIT="256M"; TUNE_OPC_VALIDATE=0
       ;;
     16)
-      max_conn=150; buffer_pool="4G"; pool_inst=4; tmp="128M"; heap="128M"
-      opc_mem=256; opc_strings=32; max_children=14
-      start_servers=2; min_spare=2; max_spare=4; max_workers=150
-      server_limit=16; memory_limit="256M"; opc_validate=0
+      TUNE_MAX_CONN=150; TUNE_BUFFER_POOL="4G"; TUNE_POOL_INST=4
+      TUNE_TMP="128M"; TUNE_HEAP="128M"
+      TUNE_OPC_MEM=256; TUNE_OPC_STRINGS=32; TUNE_MAX_CHILDREN=14
+      TUNE_START_SERVERS=2; TUNE_MIN_SPARE=2; TUNE_MAX_SPARE=4
+      TUNE_MAX_WORKERS=150; TUNE_SERVER_LIMIT=16
+      TUNE_MEMORY_LIMIT="256M"; TUNE_OPC_VALIDATE=0
       ;;
-    8)
-      max_conn=100; buffer_pool="2G"; pool_inst=2; tmp="64M"; heap="64M"
-      opc_mem=128; opc_strings=16; max_children=8
-      start_servers=2; min_spare=2; max_spare=3; max_workers=100
-      server_limit=16; memory_limit="192M"; opc_validate=1
+    8|*)
+      TUNE_MAX_CONN=100; TUNE_BUFFER_POOL="2G"; TUNE_POOL_INST=2
+      TUNE_TMP="64M"; TUNE_HEAP="64M"
+      TUNE_OPC_MEM=128; TUNE_OPC_STRINGS=16; TUNE_MAX_CHILDREN=8
+      TUNE_START_SERVERS=2; TUNE_MIN_SPARE=2; TUNE_MAX_SPARE=3
+      TUNE_MAX_WORKERS=100; TUNE_SERVER_LIMIT=16
+      TUNE_MEMORY_LIMIT="192M"; TUNE_OPC_VALIDATE=1
+      TIER=8
       ;;
   esac
+}
+
+calculate_tuning_from_hardware() {
+  local ram_gb=$1 cpu_count=$2
+  local buffer_gb pool_inst tmp_mb opc_mem mem_mb max_children start spare_max \
+        max_workers server_limit max_conn
+
+  buffer_gb="$(clamp $(( ram_gb / 4 )) 2 32)"
+  pool_inst="$(clamp "${cpu_count}" 2 16)"
+  tmp_mb="$(clamp $(( ram_gb * 16 )) 64 768)"
+  opc_mem="$(clamp $(( ram_gb * 16 )) 128 2048)"
+  TUNE_OPC_STRINGS="$(clamp $(( opc_mem / 8 )) 16 192)"
+
+  if (( ram_gb < 12 )); then
+    mem_mb=192
+    TUNE_OPC_VALIDATE=1
+  else
+    mem_mb=256
+    TUNE_OPC_VALIDATE=0
+  fi
+
+  max_children="$(clamp $(( cpu_count * 7 )) 4 128)"
+  local ram_cap=$(( ram_gb * 3 / 4 ))
+  (( max_children > ram_cap )) && max_children=$ram_cap
+  (( max_children < 4 )) && max_children=4
+
+  start="$(clamp $(( max_children / 7 )) 2 12)"
+  TUNE_MIN_SPARE="${start}"
+  TUNE_START_SERVERS="${start}"
+  TUNE_MAX_SPARE="$(clamp $(( max_children / 4 )) 3 24)"
+  TUNE_MAX_CHILDREN="${max_children}"
+
+  max_workers="$(clamp $(( max_children * 8 )) 100 800)"
+  server_limit="$(clamp $(( (max_workers + 24) / 25 )) 8 32)"
+
+  max_conn="$(clamp $(( max_children * 4 + 50 )) 100 500)"
+
+  TUNE_MAX_CONN="${max_conn}"
+  TUNE_BUFFER_POOL="${buffer_gb}G"
+  TUNE_POOL_INST="${pool_inst}"
+  TUNE_TMP="${tmp_mb}M"
+  TUNE_HEAP="${tmp_mb}M"
+  TUNE_OPC_MEM="${opc_mem}"
+  TUNE_MEMORY_LIMIT="${mem_mb}M"
+  TUNE_MAX_WORKERS="${max_workers}"
+  TUNE_SERVER_LIMIT="${server_limit}"
+
+  TIER_LABEL="auto (${ram_gb} GB RAM / ${cpu_count} CPUs)"
+  USE_CALCULATED_TUNING=1
+}
+
+apply_tuning_to_staging() {
+  [[ -n "${STAGING_DIR}" && -d "${STAGING_DIR}" ]] || die "Staging directory not initialized"
+
+  local label="${TIER_LABEL:-tier ${TIER} GB}"
+  log "Applying tuning: ${label}"
 
   sed -i \
-    -e "s/^max_connections = .*/max_connections = ${max_conn}/" \
-    -e "s/^innodb_buffer_pool_size = .*/innodb_buffer_pool_size = ${buffer_pool}/" \
-    -e "s/^innodb_buffer_pool_instances = .*/innodb_buffer_pool_instances = ${pool_inst}/" \
-    -e "s/^tmp_table_size = .*/tmp_table_size = ${tmp}/" \
-    -e "s/^max_heap_table_size = .*/max_heap_table_size = ${heap}/" \
+    -e "s/^max_connections = .*/max_connections = ${TUNE_MAX_CONN}/" \
+    -e "s/^innodb_buffer_pool_size = .*/innodb_buffer_pool_size = ${TUNE_BUFFER_POOL}/" \
+    -e "s/^innodb_buffer_pool_instances = .*/innodb_buffer_pool_instances = ${TUNE_POOL_INST}/" \
+    -e "s/^tmp_table_size = .*/tmp_table_size = ${TUNE_TMP}/" \
+    -e "s/^max_heap_table_size = .*/max_heap_table_size = ${TUNE_HEAP}/" \
     "${STAGING_DIR}/mysqld.cnf"
 
   sed -i \
-    -e "s/^memory_limit = .*/memory_limit = ${memory_limit}/" \
+    -e "s/^memory_limit = .*/memory_limit = ${TUNE_MEMORY_LIMIT}/" \
     "${STAGING_DIR}/php.ini"
 
   sed -i \
-    -e "s/^opcache.memory_consumption=.*/opcache.memory_consumption=${opc_mem}/" \
-    -e "s/^opcache.interned_strings_buffer=.*/opcache.interned_strings_buffer=${opc_strings}/" \
-    -e "s/^opcache.validate_timestamps=.*/opcache.validate_timestamps=${opc_validate}/" \
-    -e "s/^opcache.revalidate_freq=.*/opcache.revalidate_freq=$([[ "${opc_validate}" == "0" ]] && echo 0 || echo 60)/" \
+    -e "s/^opcache.memory_consumption=.*/opcache.memory_consumption=${TUNE_OPC_MEM}/" \
+    -e "s/^opcache.interned_strings_buffer=.*/opcache.interned_strings_buffer=${TUNE_OPC_STRINGS}/" \
+    -e "s/^opcache.validate_timestamps=.*/opcache.validate_timestamps=${TUNE_OPC_VALIDATE}/" \
+    -e "s/^opcache.revalidate_freq=.*/opcache.revalidate_freq=$([[ "${TUNE_OPC_VALIDATE}" == "0" ]] && echo 0 || echo 60)/" \
     "${STAGING_DIR}/opcache.ini"
 
   sed -i \
-    -e "s/^pm.max_children = .*/pm.max_children = ${max_children}/" \
-    -e "s/^pm.start_servers = .*/pm.start_servers = ${start_servers}/" \
-    -e "s/^pm.min_spare_servers = .*/pm.min_spare_servers = ${min_spare}/" \
-    -e "s/^pm.max_spare_servers = .*/pm.max_spare_servers = ${max_spare}/" \
+    -e "s/^pm.max_children = .*/pm.max_children = ${TUNE_MAX_CHILDREN}/" \
+    -e "s/^pm.start_servers = .*/pm.start_servers = ${TUNE_START_SERVERS}/" \
+    -e "s/^pm.min_spare_servers = .*/pm.min_spare_servers = ${TUNE_MIN_SPARE}/" \
+    -e "s/^pm.max_spare_servers = .*/pm.max_spare_servers = ${TUNE_MAX_SPARE}/" \
     "${STAGING_DIR}/php-fpm-www.conf"
 
   sed -i \
-    -e "s/^    ServerLimit.*/    ServerLimit              ${server_limit}/" \
-    -e "s/^    MaxRequestWorkers.*/    MaxRequestWorkers        ${max_workers}/" \
+    -e "s/^    ServerLimit.*/    ServerLimit              ${TUNE_SERVER_LIMIT}/" \
+    -e "s/^    MaxRequestWorkers.*/    MaxRequestWorkers        ${TUNE_MAX_WORKERS}/" \
     "${STAGING_DIR}/apache-mpm.conf"
+}
+
+apply_tier() {
+  set_tuning_vars_from_tier "${TIER}"
+  TIER_LABEL="tier ${TIER} GB"
+  apply_tuning_to_staging
+}
+
+print_tuning_plan() {
+  cat <<EOF
+
+  Detected hardware: ${DETECTED_RAM_GB} GB RAM, ${DETECTED_CPU_COUNT} CPU(s)
+  Nearest fixed tier: ${NEAREST_TIER:-$(nearest_fixed_tier "${DETECTED_RAM_GB}")} GB class
+
+  Planned tuning (${TIER_LABEL:-pending}):
+    MySQL buffer pool:     ${TUNE_BUFFER_POOL:-—}
+    MySQL max_connections: ${TUNE_MAX_CONN:-—}
+    PHP-FPM max_children:  ${TUNE_MAX_CHILDREN:-—}
+    OPcache memory (MB):   ${TUNE_OPC_MEM:-—}
+    Apache MaxRequestWorkers: ${TUNE_MAX_WORKERS:-—}
+    PHP memory_limit:      ${TUNE_MEMORY_LIMIT:-—}
+    Est. sustained users:  ~$(( ${TUNE_MAX_CHILDREN:-0} * 2 ))–$(( ${TUNE_MAX_CHILDREN:-0} * 3 )) concurrent PHP requests
+
+EOF
+}
+
+run_install_pipeline() {
+  init_staging
+  if [[ "${USE_CALCULATED_TUNING}" -eq 1 ]]; then
+    apply_tuning_to_staging
+  else
+    apply_tier
+  fi
+  substitute_domain
+  install_packages
+  install_optional_extras
+  configure_firewall
+  configure_apache_modules
+  deploy_configs
+  validate_and_restart
+  run_certbot
+  print_summary
 }
 
 substitute_domain() {
@@ -340,7 +491,7 @@ print_summary() {
   cat <<EOF
 
 ================================================================================
-Setup complete (tier: ${TIER} GB class)
+Setup complete (${TIER_LABEL:-tier ${TIER} GB})
 ================================================================================
 Configs applied from: ${CONFIG_DIR}
 Backups (if any):     ${BACKUP_DIR}
@@ -373,19 +524,9 @@ main() {
   require_ubuntu
   require_configs
   trap cleanup EXIT
-
-  init_staging
-  apply_tier
-  substitute_domain
-
-  install_packages
-  install_optional_extras
-  configure_firewall
-  configure_apache_modules
-  deploy_configs
-  validate_and_restart
-  run_certbot
-  print_summary
+  run_install_pipeline
 }
 
-main "$@"
+if [[ "${WP_OPT_LIB_ONLY:-}" != "1" ]]; then
+  main "$@"
+fi

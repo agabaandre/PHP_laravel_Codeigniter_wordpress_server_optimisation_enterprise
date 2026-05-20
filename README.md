@@ -1,11 +1,11 @@
 # PHP Application Server Optimisation (Enterprise)
 
-Production tuning for **Ubuntu**: **Apache (event MPM)**, **PHP 8.3 FPM**, and **MySQL 8**. Works for **WordPress**, **Laravel**, and **CodeIgniter** (and other PHP apps using the same stack).
+Production tuning for **Apache (event MPM)**, **PHP-FPM**, and **MySQL/MariaDB**. Works for **WordPress**, **Laravel**, and **CodeIgniter**.
 
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%20%7C%2024.04-orange)]()
-[![PHP](https://img.shields.io/badge/PHP-8.3%20(FPM)-777BB4)]()
-[![Apache](https://img.shields.io/badge/Apache-2.4%20(event)-D22128)]()
-[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1)]()
+[![RHEL](https://img.shields.io/badge/RHEL-Rocky%20%7C%20Alma%20%7C%20CentOS-EE0000)]()
+[![openSUSE](https://img.shields.io/badge/openSUSE-Leap%20%7C%20SLES-73BA25)]()
+[![PHP](https://img.shields.io/badge/PHP-8.x%20(FPM)-777BB4)]()
 [![Redis](https://img.shields.io/badge/Redis-optional-D82C20)]()
 
 ---
@@ -22,20 +22,40 @@ All three benefit from the same PHP-FPM, OPcache, and MySQL tuning. Capacity tab
 
 ---
 
-## Quick start (one command)
+## Choose script for your OS
 
-On a **new Ubuntu server**:
+| OS | Interactive | Non-interactive | Configs |
+|----|-------------|-----------------|---------|
+| **Debian / Ubuntu** | `auto_setup.sh` | `setup.sh` | `configs/` |
+| **RHEL / CentOS / Rocky / Alma** | `auto_setup-rhel.sh` | `setup-rhel.sh` | `configs/rhel/` |
+| **openSUSE / SLES** | `auto_setup-opensuse.sh` | `setup-opensuse.sh` | `configs/opensuse/` |
+
+All scripts share the same flags: `--tier`, `--domain`, `--email`, `--with-redis`, `--skip-certbot`, `--help`.
+
+## Quick start
+
+### Debian / Ubuntu
 
 ```bash
-git clone <your-repo-url>
-cd wordpress_server_optimisation_enterprise
+sudo ./auto_setup.sh
+# or
 sudo ./setup.sh --domain example.com --email admin@example.com
 ```
 
-**Laravel / CodeIgniter (with Redis):**
+### RHEL family (Rocky, Alma, CentOS Stream, RHEL)
 
 ```bash
-sudo ./setup.sh --with-redis --domain example.com --email admin@example.com
+sudo ./auto_setup-rhel.sh
+# or
+sudo ./setup-rhel.sh --tier 64 --domain example.com --email you@example.com
+```
+
+### openSUSE / SLES
+
+```bash
+sudo ./auto_setup-opensuse.sh
+# or
+sudo ./setup-opensuse.sh --domain example.com --email you@example.com
 ```
 
 Other tiers:
@@ -153,6 +173,23 @@ sudo apt install -y php8.3-memcached php8.3-sqlite3 php8.3-readline
 
 ---
 
+## `auto_setup.sh` vs `setup.sh`
+
+| Script | Use when |
+|--------|----------|
+| **`auto_setup.sh`** | New server; you want prompts and auto tuning from detected RAM/CPUs |
+| **`setup.sh`** | You already know the tier (`--tier 64`) or automating via CI |
+
+**Auto calculation** (option 1 in the wizard):
+
+- MySQL buffer pool ≈ 25% of RAM (cap 32G)
+- `pm.max_children` ≈ min(CPUs × 7, 75% of RAM in 256M units)
+- OPcache scales with RAM; Apache workers scale with FPM children
+
+**Preset tier** (option 2): picks nearest of 128 / 64 / 32 / 16 / 8 GB from detected RAM.
+
+---
+
 ## What `setup.sh` does
 
 1. Installs PHP 8.3 (Ondřej PPA), Apache, MySQL, Certbot, fail2ban, mod_security, git, unzip  
@@ -183,10 +220,19 @@ sudo ./setup.sh --help
 
 ```
 wordpress_server_optimisation_enterprise/
-├── setup.sh                 ← One-shot installer
-├── configs/                 ← Tuned Apache, PHP, MySQL, FPM
+├── setup.sh                 ← Debian / Ubuntu
+├── auto_setup.sh
+├── setup-rhel.sh            ← RHEL, CentOS, Rocky, Alma, Oracle Linux
+├── auto_setup-rhel.sh
+├── setup-opensuse.sh        ← openSUSE Leap, Tumbleweed, SLES
+├── auto_setup-opensuse.sh
+├── configs/                 ← Debian/Ubuntu
+├── configs/rhel/
+├── configs/opensuse/
 ├── docs/
 │   ├── SETUP.md
+│   ├── SETUP-RHEL.md
+│   ├── SETUP-OPENSUSE.md
 │   ├── SCALING.md
 │   └── DOCUMENT-FLOW.md
 └── README.md
@@ -222,10 +268,15 @@ With Redis object cache or full-page cache, sustained load is often **2–3×** 
 
 ## Requirements
 
-- Ubuntu 22.04 or 24.04 LTS  
 - Root / sudo  
 - DNS pointing to the server before Certbot (unless `--skip-certbot`)  
-- App files under `/var/www/html` (change `DocumentRoot` to `public/` for Laravel / CI4)
+- App files under `/var/www/html` (use `public/` for Laravel / CI4)  
+
+| Distro | Versions | PHP source |
+|--------|----------|------------|
+| Ubuntu / Debian | 22.04, 24.04 | Ondřej PPA (8.3) |
+| Rocky / Alma / RHEL | 8, 9 | Remi (8.3) |
+| openSUSE | Leap 15+, Tumbleweed | Distribution `php8-*` |
 
 ---
 

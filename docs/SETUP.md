@@ -2,10 +2,19 @@
 
 ## Automated (recommended)
 
+**Interactive** — detects RAM/CPUs and calculates tuning:
+
 ```bash
 git clone <your-repo-url>
 cd wordpress_server_optimisation_enterprise
+sudo ./auto_setup.sh
+```
+
+**Fixed tier:**
+
+```bash
 sudo ./setup.sh --domain YOUR_DOMAIN --email you@example.com
+sudo ./setup.sh --tier 128 --domain YOUR_DOMAIN --email you@example.com
 ```
 
 Tier examples:

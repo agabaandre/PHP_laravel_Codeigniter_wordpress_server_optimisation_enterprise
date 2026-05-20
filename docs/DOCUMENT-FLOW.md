@@ -5,22 +5,23 @@
 | Step | File | Purpose |
 |------|------|---------|
 | 1 | [README.md](../README.md) | Overview, frameworks (WP/Laravel/CI), optional Redis |
-| 2 | **`setup.sh`** | One-shot install on the server |
-| 3 | [docs/SCALING.md](SCALING.md) | Tier capacity and manual tuning |
-| 4 | [docs/SETUP.md](SETUP.md) | Manual steps / troubleshooting |
+| 2 | **`auto_setup*.sh`** | Interactive (Debian / RHEL / openSUSE) |
+| 3 | **`setup*.sh`** | Non-interactive per OS |
+| 4 | [docs/SCALING.md](SCALING.md) | Preset tier tables |
+| 5 | [docs/SETUP.md](SETUP.md) | Manual steps / troubleshooting |
 
 ## Install flow (automated)
 
 ```mermaid
 flowchart TD
-  A[clone repo] --> B["sudo ./setup.sh (--with-redis optional)"]
-  B --> C[install packages + PPA]
-  C --> D[apply tier to configs/]
-  D --> E[deploy to /etc]
+  A[clone repo] --> B["sudo ./auto_setup.sh (or setup.sh)"]
+  B --> C[detect RAM + CPUs]
+  C --> D[calculate or pick tier]
+  D --> E[install + deploy configs]
   E --> F[restart mysql php-fpm apache]
-  F --> G{--skip-certbot?}
-  G -->|no| H[certbot + SSL vhost]
-  G -->|yes| I[done HTTP]
+  F --> G{certbot?}
+  G -->|yes| H[certbot + SSL vhost]
+  G -->|no| I[done HTTP]
   H --> J[reload apache]
 ```
 
@@ -59,7 +60,7 @@ flowchart LR
 
 | Removed | Reason |
 |---------|--------|
-| `commands.txt` | Replaced by `setup.sh` |
+| `auto_setup.sh` | Interactive wizard (sources `setup.sh`) |
 | `apache2.conf` | Duplicate of SSL vhost; use `configs/apache-vhost-ssl.conf` |
 | Root-level `64gb*.conf` | Moved to `configs/` with stable names |
 
