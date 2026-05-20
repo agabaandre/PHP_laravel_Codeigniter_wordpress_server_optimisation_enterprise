@@ -2,7 +2,7 @@
 
 Production tuning for **Apache 2.4 (event MPM)**, **PHP-FPM**, and **MySQL 8**. Works for **WordPress**, **Laravel**, and **CodeIgniter**.
 
-**Contents:** [Objectives](#project-objectives) · [Why production tuning](#why-configure-for-production) · [Quick start](#quick-start) · [Production recommendations](#production-recommendations) · [Scaling](#capacity-by-server-size)
+**Contents:** [Objectives](#project-objectives) · [Why production tuning](#why-configure-for-production) · [Quick start](#quick-start) · [Production recommendations](#production-recommendations) · [Scaling](#capacity-by-server-size) · [Research paper (Africa CDC case study)](docs/research/Scaling-Health-Organisation-Websites.md)
 
 ---
 
@@ -393,6 +393,7 @@ Malicious bots ignore `robots.txt`. **Edge filtering (Cloudflare) + server rules
 | [docs/SETUP.md](docs/SETUP.md) | Manual install or debugging the script |
 | [docs/SCALING.md](docs/SCALING.md) | Tier values and capacity |
 | [docs/DOCUMENT-FLOW.md](docs/DOCUMENT-FLOW.md) | Config layout and install order |
+| [docs/research/Scaling-Health-Organisation-Websites.md](docs/research/Scaling-Health-Organisation-Websites.md) | Academic case study (Africa CDC); export to PDF |
 
 ---
 
