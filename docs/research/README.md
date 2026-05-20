@@ -46,3 +46,5 @@ Open the `.md` in a Markdown previewer with print CSS, **Print → Save as PDF**
 ## Length
 
 The source document is structured as a **journal-style article** (abstract, numbered sections, references, appendices) and exceeds **five pages** when rendered at 11pt with standard margins.
+
+**Section 7.4** recommends a monitoring stack: **SigNoz** (primary observability), with **Prometheus**, **Grafana**, **Loki**, **Alertmanager**, and **Node Exporter** as complementary, non-overlapping components.

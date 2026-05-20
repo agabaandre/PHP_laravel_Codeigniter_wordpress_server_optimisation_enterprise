@@ -53,7 +53,7 @@ This paper is written from a **practitioner-researcher** perspective. The author
 
 ### 1.5 Structure of the paper
 
-Section 2 reviews relevant literature. Section 3 outlines the technical stack and optimisation parameters. Section 4 presents the Africa CDC case narrative. Section 5 describes the methodology and automation artefacts. Section 6 discusses security and governance. Section 7 provides recommendations for health organisations. Section 8 concludes and identifies future work.
+Section 2 reviews relevant literature. Section 3 outlines the technical stack and optimisation parameters. Section 4 presents the Africa CDC case narrative. Section 5 describes the methodology and automation artefacts. Section 6 discusses security and governance. Section 7 provides recommendations for health organisations, including monitoring and observability. Section 8 concludes and identifies future work.
 
 ---
 
@@ -200,7 +200,7 @@ Rigorous pre/post controlled experimentation was not feasible in the operational
 - **Theoretical capacity models** (FPM child limits, buffer pool sizing).
 - **Configuration conformance audits** against documented baselines.
 
-Future work should incorporate longitudinal monitoring (Prometheus, Apache server-status, MySQL performance_schema) to publish quantitative availability statistics.
+The present optimisation programme establishes slow-query and PHP-FPM slow logging at the host layer, but **does not replace** a unified observability platform. Future operational maturity at Africa CDC and peer institutions should deploy the monitoring architecture described in Section 7.4 to capture quantitative availability, saturation events (such as the May 2026 surge), and mean time to detection for regressions.
 
 ---
 
@@ -245,13 +245,15 @@ Health sites may process personal data (newsletter emails, contact forms). Optim
 3. **Place** public sites behind a CDN with caching rules for anonymous readers.
 4. **Harden** credentials; enforce MFA on CMS admin interfaces.
 5. **Maintain** staging environments that are not indexable and not exposed without authentication.
+6. **Deploy** a consolidated monitoring and observability stack (Section 7.4) before the next outbreak communication cycle.
 
 ### 7.2 During surge events
 
 1. **Purge/warm CDN cache** after publishing critical updates.
-2. **Monitor** PHP slow logs and MySQL slow query logs.
+2. **Observe** real-time dashboards (request rate, HTTP 5xx, PHP-FPM queue depth, MySQL threads, host CPU/RAM)—not only file-based slow logs.
 3. **Defer** non-essential plugin updates and batch jobs.
 4. **Communicate** via multiple channels (email, social) aware that web spikes follow alerts by minutes.
+5. **Validate** Alertmanager routes fire to on-call channels if thresholds breach (e.g. error rate, disk, or `max_children` saturation).
 
 ### 7.3 Framework selection guidance
 
@@ -259,13 +261,61 @@ Health sites may process personal data (newsletter emails, contact forms). Optim
 - **Laravel:** Redis for cache/session; `config:cache` and `route:cache` in production.
 - **CodeIgniter:** similar cache/session strategy; strict `public/` docroot.
 
+### 7.4 Monitoring and observability (recommended stack)
+
+Server tuning alone cannot answer *when* a site will fail under surge—it only raises the ceiling. Health organisations require **continuous visibility** across infrastructure, applications, and logs to detect saturation early, shorten mean time to resolution (MTTR), and document post-incident evidence for governance and improvement (Beyer et al., 2016; Sridharan, 2018).
+
+Following review of available platforms for Africa CDC’s context, **SigNoz** is recommended as the **primary observability backend**: an open-source, OpenTelemetry-native application performance monitoring (APM) and metrics platform that unifies traces, metrics, and logs in a single interface without proprietary agent lock-in (SigNoz, 2025). It aligns well with PHP/MySQL/Apache stacks and self-hosted deployment requirements common in public-sector health IT.
+
+To avoid overlapping tools and unnecessary operational burden, complementary components should be integrated **within the same monitoring ecosystem**, each with a distinct role:
+
+| Component | Role in the health web stack | Primary signals |
+|-----------|------------------------------|-----------------|
+| **SigNoz** | Unified observability UI; APM; service-level views; correlation of traces, metrics, and logs | End-to-end request latency, dependency health, incident investigation |
+| **Prometheus** | Time-series **metrics collection and storage** on servers or host environments | Apache scoreboard, PHP-FPM status, MySQL exporters, custom app metrics |
+| **Grafana** | **Dashboards, reporting, and visualisation** (often paired with Prometheus and Loki data sources) | Executive and engineering views; surge comparison panels (e.g. pre/post alert) |
+| **Loki** | **Centralised log aggregation** and label-based search | Apache access/error logs, PHP-FPM slow log, MySQL slow log, system journal |
+| **Alertmanager** | **Alert routing, deduplication, silencing, and escalation** | Pager/email/Slack when 5xx rate, latency, disk, or CPU exceeds SLO thresholds |
+| **Node Exporter** | **Host-level metrics**: CPU, memory, disk I/O, filesystem, network | Capacity planning; detecting swap, disk fill, and NIC saturation during spikes |
+
+#### 7.4.1 Rationale for a combined, non-duplicative architecture
+
+A **layered but integrated** design satisfies four requirements derived from the Africa CDC case:
+
+1. **Proactive monitoring** — Alert on leading indicators (FPM listen queue, MySQL threads_running, elevated 502 rate) *before* public failure.
+2. **Faster troubleshooting** — During events such as the 11–19 May 2026 surge, engineers can pivot from Grafana dashboards to Loki log lines and SigNoz traces without SSHing to parse disparate files.
+3. **Improved reliability** — Post-incident review uses retained metrics to test whether tier sizing (Section 3, Appendix A) remains adequate.
+4. **Centralised alert management** — Alertmanager provides one notification pipeline rather than cron jobs and ad hoc scripts per service.
+
+Prometheus scrapes infrastructure and application exporters; Grafana visualises Prometheus and Loki data; Loki ingests logs shipped from the web tier; Alertmanager evaluates Prometheus alert rules; Node Exporter supplies machine metrics; **SigNoz** provides the OpenTelemetry-centric application view and can ingest or complement Prometheus-compatible workflows depending on deployment mode (SigNoz, 2025). Roles are **complementary**, not redundant: Prometheus does not replace Loki for log search; Grafana does not replace Alertmanager for on-call workflow.
+
+#### 7.4.2 Metrics of particular interest for PHP health properties
+
+For WordPress, Laravel, and CodeIgniter deployments on the tuned stack described in this paper, prioritise:
+
+- **HTTP:** request rate, status code histogram (2xx/4xx/5xx), upstream/time-to-first-byte.
+- **PHP-FPM:** active/idle workers, `listen queue`, slow request count, `max children reached` events.
+- **MySQL/MariaDB:** connections, slow queries, InnoDB buffer pool hit rate, replication lag (if applicable).
+- **Host:** CPU steal, memory available, swap usage, disk latency (Node Exporter).
+- **Business context:** annotate dashboards with newsletter send times and press release timestamps to correlate **demand spikes** with infrastructure signals.
+
+#### 7.4.3 Implementation guidance
+
+1. **Pilot on production-like staging**, then extend to the Africa CDC production host group.
+2. **Define SLOs** (e.g. 99% availability, p95 latency &lt; 2 s for anonymous pages) and encode Prometheus alert rules consumed by Alertmanager.
+3. **Retain metrics** across at least one major outbreak cycle to inform capacity tables and CDN caching policy.
+4. **Document runbooks** linking alerts to mitigations (reload PHP-FPM, purge CDN, scale workers within tuned `pm.max_children` ceiling).
+5. **Restrict dashboard access** and log stores under institutional IAM—observability data may contain URLs and identifiers subject to governance review.
+
+This monitoring layer should be regarded as the **second phase** of the optimisation programme documented herein: Phase 1 establishes performant, hardened baselines via `setup.sh` and related artefacts; Phase 2 institutionalises observability so future emergencies are measurable, alertable, and defensible to technical and public-health leadership.
+
 ---
 
 ## 8. Conclusion
 
 Public-health emergencies convert institutional websites into critical infrastructure. The Africa CDC case during the May 2026 Congo and Uganda Ebola communication window illustrates how **default server configurations can neutralise substantial hardware investments** at the moment of greatest public need. Structured tuning of Apache, PHP-FPM, MySQL, and OPcache—combined with edge protection and credential hygiene—restores effective capacity and aligns technical posture with organisational mandates for timely information.
 
-The open-source automation framework accompanying this research translates practitioner knowledge into **repeatable scripts and documentation**, addressing a widespread skills gap among health-sector digital teams. Future empirical work should quantify availability improvements through controlled monitoring and report multi-institutional deployments.
+The open-source automation framework accompanying this research translates practitioner knowledge into **repeatable scripts and documentation**, addressing a widespread skills gap among health-sector digital teams. **Phase-two observability**—centred on SigNoz with Prometheus, Grafana, Loki, Alertmanager, and Node Exporter—should be adopted to transform anecdotal outage narratives into evidence-based capacity and incident management. Future empirical work should publish availability statistics, alert response times, and multi-institutional deployments under this combined monitoring model.
 
 ---
 
@@ -274,6 +324,16 @@ The open-source automation framework accompanying this research translates pract
 Africa CDC. (2026). *Disease outbreaks and health emergencies*. Africa Centres for Disease Control and Prevention. https://africacdc.org/
 
 Allspaw, J. (2012). *The art of capacity planning* (2nd ed.). O’Reilly Media.
+
+Beyer, B., Jones, C., Petoff, J., & Murphy, N. C. (2016). *Site reliability engineering*. O’Reilly Media.
+
+Grafana Labs. (2024). *Grafana documentation*. https://grafana.com/docs/
+
+Prometheus Authors. (2024). *Prometheus monitoring system*. Cloud Native Computing Foundation. https://prometheus.io/docs/
+
+SigNoz. (2025). *SigNoz: Open-source observability platform*. https://signoz.io/docs/
+
+Sridharan, C. (2018). *Practical monitoring*. O’Reilly Media.
 
 Apache Software Foundation. (2024). *Apache HTTP Server Version 2.4 Documentation: Multi-Processing Modules*. https://httpd.apache.org/docs/2.4/mpm.html
 
@@ -337,6 +397,21 @@ African Union. (2014). *Convention on Cyber Security and Personal Data Protectio
 
 ---
 
-*Document version: 1.0 — May 2026.*  
+## Appendix C: Recommended observability stack (summary)
+
+| Tool | Category | Function |
+|------|----------|----------|
+| SigNoz | APM / unified observability | Traces, metrics, logs; OpenTelemetry-native analysis |
+| Prometheus | Metrics | Scrapes exporters; time-series store; alert rule input |
+| Grafana | Visualisation | Dashboards and reporting across Prometheus and Loki |
+| Loki | Logging | Centralised Apache, PHP, MySQL, and system log search |
+| Alertmanager | Alerting | Notifications, grouping, silencing, escalation |
+| Node Exporter | Infrastructure | CPU, memory, disk, network host metrics |
+
+*Deploy as an integrated Phase 2 programme after production server tuning (Phase 1).*
+
+---
+
+*Document version: 1.1 — May 2026.*  
 *Author: **Agaba Andrew**, Software Engineer, Division of Digital Health and Information Systems, Africa CDC.*  
 *Prepared in conjunction with the WordPress Server Optimisation (Enterprise) open-source project.*
